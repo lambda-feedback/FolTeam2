@@ -1,22 +1,11 @@
 import json
-import logging
 import os
-import sys
 from typing import Any
 from openai import OpenAI
 from dotenv import load_dotenv
 from lf_toolkit.evaluation import Result, Params
 
 load_dotenv()
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-if not logger.handlers:
-    _handler = logging.StreamHandler(sys.stderr)
-    _handler.setLevel(logging.DEBUG)
-    _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
-    logger.addHandler(_handler)
-logger.propagate = False
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_MAIN_PROMPT = "You are a science teacher grading a student's short-answer response."
@@ -66,8 +55,6 @@ def evaluation_function(
     to output the evaluation response.
     """
 
-    logger.debug("evaluation_function called: response=%r, answer=%r", response, answer)
-
     client = OpenAI(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
@@ -75,52 +62,32 @@ def evaluation_function(
     )
 
     question = params.get("question")
-    logger.debug("question=%r, model=%r", question, params.get("model"))
-
     main_prompt = process_prompt(params.get('main_prompt', DEFAULT_MAIN_PROMPT), question, answer)
     default_prompt = process_prompt(params.get('default_prompt', DEFAULT_PROMPT), question, answer)
-    feedback_prompt_raw = params.get('feedback_prompt', DEFAULT_FEEDBACK_PROMPT)
-    feedback_prompt = process_prompt(feedback_prompt_raw, question, answer)
+    feedback_prompt = process_prompt(params.get('feedback_prompt', DEFAULT_FEEDBACK_PROMPT), question, answer)
     model = params.get('model', DEFAULT_MODEL)
 
-    if feedback_prompt_raw.strip():
-        logger.debug("running combined correctness + feedback check")
-        combined_system = (
-            f"{main_prompt} {default_prompt} {feedback_prompt} "
-            'Output your response as a JSON object with exactly two fields: '
-            '"is_correct" (boolean, true if the student response is correct, false otherwise) '
-            'and "feedback" (string, feedback for the student).'
-        )
-        combined_result = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": combined_system},
-                {"role": "user", "content": response},
-            ],
-        )
-        raw = combined_result.choices[0].message.content.strip()
-        logger.debug("combined result raw: %r", raw)
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as e:
-            logger.error("failed to parse combined result as JSON: %r", raw)
-            raise ValueError(f"Model did not return valid JSON: {e}") from e
-        is_correct = bool(data["is_correct"])
-        feedback_text = str(data.get("feedback", ""))
-        logger.debug("is_correct=%s, feedback=%r", is_correct, feedback_text)
-        result = Result(is_correct=is_correct)
-        result.add_feedback("feedback", feedback_text)
-        return result
-    else:
-        logger.debug("running correctness check")
-        correctness_result = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": main_prompt + " " + default_prompt},
-                {"role": "user", "content": response},
-            ],
-        )
-        correctness_verdict = correctness_result.choices[0].message.content.strip()
-        is_correct = correctness_verdict.lower() == "true"
-        logger.debug("correctness verdict: %r -> is_correct=%s", correctness_verdict, is_correct)
-        return Result(is_correct=is_correct)
+    system_prompt = (
+        f"{main_prompt} {default_prompt} {feedback_prompt} "
+        'Output your response as a JSON object with exactly two fields: '
+        '"is_correct" (boolean, true if the student response is correct, false otherwise) '
+        'and "feedback" (string, feedback for the student).'
+    )
+
+    completion = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": response},
+        ],
+    )
+
+    raw = completion.choices[0].message.content.strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Model did not return valid JSON: {e}") from e
+
+    result = Result(is_correct=bool(data["is_correct"]))
+    result.add_feedback("feedback", str(data.get("feedback", "")))
+    return result

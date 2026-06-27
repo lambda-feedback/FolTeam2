@@ -26,7 +26,7 @@ class TestEvaluationFunction(unittest.TestCase):
         self.assertEqual(result.get("is_correct"), True)
         self.assertTrue(result.get("feedback"))
 
-    def _params(self, feedback_prompt=""):
+    def _params(self):
         return Params(
             model="openai/gpt-4o-mini",
             question=self._QUESTION,
@@ -36,7 +36,7 @@ class TestEvaluationFunction(unittest.TestCase):
                 "Respond with exactly 'true' if the student's response is correct, "
                 "or 'false' otherwise."
             ),
-            feedback_prompt=feedback_prompt,
+            feedback_prompt="Explain in one sentence why the response is correct or incorrect.",
         )
 
     def test_correct_response(self):
@@ -46,6 +46,7 @@ class TestEvaluationFunction(unittest.TestCase):
             self._params(),
         ).to_dict()
         self.assertTrue(result.get("is_correct"))
+        self.assertTrue(result.get("feedback"))
 
     def test_incorrect_response(self):
         result = evaluation_function(
@@ -54,15 +55,4 @@ class TestEvaluationFunction(unittest.TestCase):
             self._params(),
         ).to_dict()
         self.assertFalse(result.get("is_correct"))
-
-    def test_combined_feedback_branch(self):
-        params = self._params(
-            feedback_prompt="Explain in one sentence why the response is correct or incorrect."
-        )
-        result = evaluation_function(
-            "Honey and apple, because they have the same density and melting point.",
-            self._ANSWER,
-            params,
-        ).to_dict()
-        self.assertTrue(result.get("is_correct"))
         self.assertTrue(result.get("feedback"))
