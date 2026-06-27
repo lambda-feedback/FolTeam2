@@ -18,6 +18,16 @@ if not logger.handlers:
     logger.addHandler(_handler)
 logger.propagate = False
 
+DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_MAIN_PROMPT = "You are a science teacher grading a student's short-answer response."
+DEFAULT_PROMPT = (
+    "The question was: {{question}} The correct answer is: {{answer}}. "
+    "Respond with exactly 'true' if the student's response is correct, or 'false' otherwise."
+)
+DEFAULT_FEEDBACK_PROMPT = (
+    "Explain in one or two encouraging sentences why the response is correct or incorrect."
+)
+
 
 def process_prompt(prompt, question, answer):
     prompt = prompt.replace("{{answer}}", str(answer))
@@ -67,11 +77,13 @@ def evaluation_function(
     question = params.get("question")
     logger.debug("question=%r, model=%r", question, params.get("model"))
 
-    main_prompt = process_prompt(params['main_prompt'], question, answer)
-    default_prompt = process_prompt(params['default_prompt'], question, answer)
-    feedback_prompt = process_prompt(params['feedback_prompt'], question, answer)
+    main_prompt = process_prompt(params.get('main_prompt', DEFAULT_MAIN_PROMPT), question, answer)
+    default_prompt = process_prompt(params.get('default_prompt', DEFAULT_PROMPT), question, answer)
+    feedback_prompt_raw = params.get('feedback_prompt', DEFAULT_FEEDBACK_PROMPT)
+    feedback_prompt = process_prompt(feedback_prompt_raw, question, answer)
+    model = params.get('model', DEFAULT_MODEL)
 
-    if params['feedback_prompt'].strip():
+    if feedback_prompt_raw.strip():
         logger.debug("running combined correctness + feedback check")
         combined_system = (
             f"{main_prompt} {default_prompt} {feedback_prompt} "
@@ -80,7 +92,7 @@ def evaluation_function(
             'and "feedback" (string, feedback for the student).'
         )
         combined_result = client.chat.completions.create(
-            model=params['model'],
+            model=model,
             messages=[
                 {"role": "system", "content": combined_system},
                 {"role": "user", "content": response},
@@ -102,7 +114,7 @@ def evaluation_function(
     else:
         logger.debug("running correctness check")
         correctness_result = client.chat.completions.create(
-            model=params['model'],
+            model=model,
             messages=[
                 {"role": "system", "content": main_prompt + " " + default_prompt},
                 {"role": "user", "content": response},

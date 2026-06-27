@@ -18,6 +18,14 @@ class TestEvaluationFunction(unittest.TestCase):
         "density and melting point."
     )
 
+    def test_evaluation_with_default_params(self):
+        response, answer, params = "Hello, World", "Hello, World", Params()
+
+        result = evaluation_function(response, answer, params).to_dict()
+
+        self.assertEqual(result.get("is_correct"), True)
+        self.assertTrue(result.get("feedback"))
+
     def _params(self, feedback_prompt=""):
         return Params(
             model="openai/gpt-4o-mini",
