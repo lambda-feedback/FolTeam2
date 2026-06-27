@@ -1,47 +1,20 @@
-import re
 from typing import Any
 
 from lf_toolkit.evaluation import Result, Params
 
-# Rubric for: "Which of the above sources has the same type of sugar? Why?"
-# Correct claim: honey and apple share the same sugar, evidenced by matching
-# density (~1.69-1.70 g/cm3) and melting point (103 oC), reasoned through the
-# fact that density and melting point are characteristic properties used to
-# identify a substance.
+# Generic grader for "which two sources share the same substance?"
+# short-answer questions, where the correct pair is identified by matching
+# characteristic properties (e.g. density, melting point) given in a
+# comparison table. `params.sources` lists every source name in the
+# question's table, so a wrongly named source can be told apart from a
+# missing one.
 
-_CLAIM_NAMES = ("honey", "apple")
-
-_NEGATION_PATTERN = re.compile(
-    r"\bnone\b.{0,40}same sugar|\bno(ne)? of (them|the).{0,30}same sugar",
-    re.IGNORECASE,
-)
-
-_REASONING_KEYWORDS = (
-    "characteristic propert",
-    "identify the substance",
-    "identifies substances",
-    "identify substances",
-    "unique substance",
-    "same substance",
-    "used to identify",
-    "determine whether",
-)
+_DEFAULT_SOURCES = ("honey", "milk", "sugarcane", "sugar cane", "apple")
 
 
-def _check_claim(text: str) -> bool:
-    if _NEGATION_PATTERN.search(text):
-        return False
-    return all(name in text for name in _CLAIM_NAMES)
-
-
-def _check_evidence(text: str) -> bool:
-    has_density = "density" in text
-    has_melting_point = "melting point" in text or "melt" in text
-    return has_density and has_melting_point
-
-
-def _check_reasoning(text: str) -> bool:
-    return any(keyword in text for keyword in _REASONING_KEYWORDS)
+def _mentioned_sources(text: str, sources) -> set:
+    text = text.lower()
+    return {source for source in sources if source in text}
 
 
 def evaluation_function(
@@ -50,42 +23,32 @@ def evaluation_function(
     params: Params,
 ) -> Result:
     """
-    Grades open-ended responses to the "Comparing Types of Natural Sugars"
-    question using a claim/evidence/reasoning (CER) rubric.
+    Grades short-answer responses naming the two sources that share the
+    same substance.
     ---
-    A response is marked correct only if it:
-    - Claims honey and apple have the same sugar (the claim).
-    - Cites density and melting point as supporting data (the evidence).
-    - Explains that matching characteristic properties identify the same
-      substance (the reasoning).
+    - `answer` holds the correct pair of source names, e.g. "Honey and Apple".
+    - `response` is the student's short answer naming the pair they picked.
+    - `params.sources` (optional) lists every source name in the question's
+      table. Defaults to the sugar-comparison sources.
     """
 
-    text = str(response).lower()
+    sources = [s.lower() for s in params.get("sources", _DEFAULT_SOURCES)]
 
-    claim_ok = _check_claim(text)
-    evidence_ok = _check_evidence(text)
-    reasoning_ok = _check_reasoning(text)
+    expected = _mentioned_sources(str(answer), sources)
+    given = _mentioned_sources(str(response), sources)
 
-    if claim_ok and evidence_ok and reasoning_ok:
-        feedback = "Well done! Your claim, evidence, and reasoning are all correct."
+    is_correct = bool(expected) and given == expected
+
+    if is_correct:
+        feedback = "Correct! These two sources share the same substance."
+    elif not given:
+        feedback = "Name the two sources you think share the same substance."
+    elif given - expected:
+        feedback = "One or more of the sources you named don't match. Check the table values again."
     else:
-        feedback_parts = []
-        if not claim_ok:
-            feedback_parts.append(
-                "Your claim should state that honey and apple contain the same type of sugar."
-            )
-        if not evidence_ok:
-            feedback_parts.append(
-                "Support your claim with evidence: the density and melting point values from the table."
-            )
-        if not reasoning_ok:
-            feedback_parts.append(
-                "Explain your reasoning: density and melting point are characteristic properties, "
-                "so matching values mean the sugar is the same substance."
-            )
-        feedback = " ".join(feedback_parts)
+        feedback = "You're missing one of the two matching sources."
 
     return Result(
-        is_correct=claim_ok and evidence_ok and reasoning_ok,
-        feedback=feedback,
+        is_correct=is_correct,
+        feedback_items=[("general", feedback)],
     )
