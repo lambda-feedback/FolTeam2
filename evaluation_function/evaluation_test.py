@@ -4,63 +4,57 @@ from .evaluation import Params, evaluation_function
 
 class TestEvaluationFunction(unittest.TestCase):
     """
-    Tests the source-pair matcher against three short-answer questions:
-    sugar (default sources), plant oils, and starch.
+    Tests the LLM-based grader against the "Comparing Types of Natural
+    Sugars" question. These tests call the OpenRouter API, so
+    OPENROUTER_API_KEY must be set in the environment.
 
     Read the docs on how to use unittest here:
     https://docs.python.org/3/library/unittest.html
     """
 
-    # Question 1: Comparing Types of Natural Sugars (default sources)
-    # Table: Honey/Milk/Sugarcane/Apple - correct pair is Honey & Apple.
+    _QUESTION = "Which of the sources (Honey, Milk, Sugarcane, Apple) has the same type of sugar? Why?"
+    _ANSWER = (
+        "Apple and honey have the same type of sugar, as they share the same "
+        "density and melting point."
+    )
 
-    def test_sugar_correct(self):
-        result = evaluation_function("Honey and Apple", "Honey and Apple", Params()).to_dict()
+    def _params(self, feedback_prompt=""):
+        return Params(
+            model="openai/gpt-4o-mini",
+            question=self._QUESTION,
+            main_prompt="You are a science teacher grading a student's short-answer response.",
+            default_prompt=(
+                "The question was: {{question}} The correct answer is: {{answer}}. "
+                "Respond with exactly 'true' if the student's response is correct, "
+                "or 'false' otherwise."
+            ),
+            feedback_prompt=feedback_prompt,
+        )
+
+    def test_correct_response(self):
+        result = evaluation_function(
+            "Honey and apple, because they have the same density and melting point.",
+            self._ANSWER,
+            self._params(),
+        ).to_dict()
         self.assertTrue(result.get("is_correct"))
 
-    def test_sugar_correct_order_independent(self):
-        result = evaluation_function("Apple, Honey", "Honey and Apple", Params()).to_dict()
+    def test_incorrect_response(self):
+        result = evaluation_function(
+            "Milk and sugarcane have the same sugar.",
+            self._ANSWER,
+            self._params(),
+        ).to_dict()
+        self.assertFalse(result.get("is_correct"))
+
+    def test_combined_feedback_branch(self):
+        params = self._params(
+            feedback_prompt="Explain in one sentence why the response is correct or incorrect."
+        )
+        result = evaluation_function(
+            "Honey and apple, because they have the same density and melting point.",
+            self._ANSWER,
+            params,
+        ).to_dict()
         self.assertTrue(result.get("is_correct"))
-
-    def test_sugar_wrong_pair(self):
-        result = evaluation_function("Milk and Sugarcane", "Honey and Apple", Params()).to_dict()
-        self.assertFalse(result.get("is_correct"))
-
-    def test_sugar_incomplete(self):
-        result = evaluation_function("Honey", "Honey and Apple", Params()).to_dict()
-        self.assertFalse(result.get("is_correct"))
-
-    def test_sugar_extra_wrong_name(self):
-        result = evaluation_function("Honey, Apple, and Milk", "Honey and Apple", Params()).to_dict()
-        self.assertFalse(result.get("is_correct"))
-
-    # Question 2: Comparing Types of Plant Oils
-    # Table: Olive/Coconut/Sunflower/Avocado - correct pair is Olive & Avocado.
-
-    def test_oils_correct(self):
-        params = Params(sources=["olive", "coconut", "sunflower", "avocado"])
-        result = evaluation_function("Olive and Avocado", "Olive and Avocado", params).to_dict()
-        self.assertTrue(result.get("is_correct"))
-
-    def test_oils_wrong_pair(self):
-        params = Params(sources=["olive", "coconut", "sunflower", "avocado"])
-        result = evaluation_function("Coconut and Sunflower", "Olive and Avocado", params).to_dict()
-        self.assertFalse(result.get("is_correct"))
-
-    # Question 3: Comparing Types of Starch
-    # Table: Potato/Rice/Corn/Wheat - correct pair is Corn & Wheat.
-
-    def test_starch_correct(self):
-        params = Params(sources=["potato", "rice", "corn", "wheat"])
-        result = evaluation_function("Corn and Wheat", "Corn and Wheat", params).to_dict()
-        self.assertTrue(result.get("is_correct"))
-
-    def test_starch_wrong_pair(self):
-        params = Params(sources=["potato", "rice", "corn", "wheat"])
-        result = evaluation_function("Potato and Rice", "Corn and Wheat", params).to_dict()
-        self.assertFalse(result.get("is_correct"))
-
-    def test_feedback_present_when_incorrect(self):
-        result = evaluation_function("not relevant at all", "Honey and Apple", Params()).to_dict()
-        self.assertFalse(result.get("is_correct"))
         self.assertTrue(result.get("feedback"))
