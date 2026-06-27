@@ -8,23 +8,7 @@ from lf_toolkit.evaluation import Result, Params
 load_dotenv()
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
-DEFAULT_MAIN_PROMPT = "You are a science teacher grading a student's short-answer response."
-DEFAULT_PROMPT = (
-    "The question was: {{question}} The correct answer is: {{answer}}. "
-    "Respond with exactly 'true' if the student's response is correct, or 'false' otherwise."
-)
-DEFAULT_FEEDBACK_PROMPT = (
-    "Explain in one or two encouraging sentences why the response is correct or incorrect."
-)
 
-
-def process_prompt(prompt, question, answer):
-    prompt = prompt.replace("{{answer}}", str(answer))
-    prompt = prompt.replace("{{question}}", str(question) or "")
-    prompt = prompt.strip()
-    if prompt and not prompt.endswith('.'):
-        prompt += '.'
-    return prompt
 
 
 def evaluation_function(
@@ -61,17 +45,18 @@ def evaluation_function(
         max_retries=3,
     )
 
+    FEEDBACK_DIMENSION_PROMPT="""
+    Provide the feedback on these dimseions: 1) Claim 2) Evidence 3) Reasoning. Provide the feedback in one sentence for each..
+    """
+
     question = params.get("question")
-    main_prompt = process_prompt(params.get('main_prompt', DEFAULT_MAIN_PROMPT), question, answer)
-    default_prompt = process_prompt(params.get('default_prompt', DEFAULT_PROMPT), question, answer)
-    feedback_prompt = process_prompt(params.get('feedback_prompt', DEFAULT_FEEDBACK_PROMPT), question, answer)
     model = params.get('model', DEFAULT_MODEL)
 
     system_prompt = (
-        f"{main_prompt} {default_prompt} {feedback_prompt} "
+        f"{FEEDBACK_DIMENSION_PROMPT} You are a science teacher grading a student's short-answer response. "
         'Output your response as a JSON object with exactly two fields: '
         '"is_correct" (boolean, true if the student response is correct, false otherwise) '
-        'and "feedback" (string, feedback for the student).'
+        f'and "feedback" (string, feedback for the student). The question is: {question} '
     )
 
     completion = client.chat.completions.create(
