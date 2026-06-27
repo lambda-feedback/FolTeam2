@@ -57,6 +57,7 @@ def evaluation_function(
         'Output your response as a JSON object with exactly two fields: '
         '"is_correct" (boolean, true if the student response is correct, false otherwise) '
         f'and "feedback" (string, feedback for the student). The question is: {question} '
+        f'The correct answer is: {answer}.'
     )
 
     completion = client.chat.completions.create(
